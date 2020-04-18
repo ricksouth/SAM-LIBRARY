@@ -1,0 +1,116 @@
+buildscript {
+    repositories {
+        maven { url = 'https://files.minecraftforge.net/maven' }
+        maven { url 'https://plugins.gradle.org/m2/' }
+        jcenter()
+        mavenCentral()
+    }
+    dependencies {
+        classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '3.+', changing: true
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'maven-publish' 
+apply plugin: 'eclipse'
+
+apply from: 'https://raw.githubusercontent.com/MinecraftModDevelopment/Gradle-Collection/master/minecraft/artifacts.gradle'
+apply from: 'https://raw.githubusercontent.com/MinecraftModDevelopment/Gradle-Collection/master/minecraft/maven_nomcp.gradle'
+
+import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+
+version = "${mod_version}" + getBuildNumber()
+archivesBaseName = "${mod_name}-${minecraft_version}"
+
+sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
+
+minecraft {
+
+    mappings channel: 'snapshot', version: "${mcp_version}".toString()
+	
+    if (project.hasProperty('mod_at')) {
+    
+        accessTransformer = file(findProperty('mod_at'))
+    }
+	
+    runs {
+        client {
+		
+            workingDirectory project.file('run')
+			taskName "${mod_name}".replaceAll("\\s","") + 'Client'
+
+            mods {
+                bookshelf {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        server {
+            workingDirectory project.file('run')
+			taskName "${mod_name}".replaceAll("\\s","") + 'Server'
+			
+            mods {
+                bookshelf {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+
+    minecraft 'net.minecraftforge:forge:1.14.4-28.2.4'
+}
+
+jar {
+    manifest {
+        attributes([
+            'Timestamp': System.currentTimeMillis(),
+            'Specification-Title': "${mod_name}",
+            'Specification-Vendor': "${mod_vendor}",
+            'Specification-Version': "${version}",
+            'Implementation-Title': project.archivesBaseName,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor' :"${mod_vendor}",
+            'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+            'Built-On-Java': "${System.getProperty('java.vm.version')} (${System.getProperty('java.vm.vendor')})",
+            'Built-On': "${forge_version}"
+        ])
+    }
+}
+
+String getBuildNumber() {
+
+    return System.getenv('BUILD_NUMBER') ? System.getenv('BUILD_NUMBER') : System.getenv('TRAVIS_BUILD_NUMBER') ? System.getenv('TRAVIS_BUILD_NUMBER') : '0';
+}
+
+processResources {
+
+    from(sourceSets.main.resources.srcDirs) {
+    
+        exclude 'META-INF/mods.toml'
+    }
+    
+	doLast {
+	
+	    def jsonMinifyStart = System.currentTimeMillis()
+	    def jsonMinified = 0
+		def jsonBytesSaved = 0
+		
+	    fileTree(dir: outputs.files.asPath, include: '**/*.json').each {
+		
+			File file = it
+			jsonMinified++
+			def oldLength = file.length()
+			file.text = JsonOutput.toJson(new JsonSlurper().parse(file))
+			jsonBytesSaved += oldLength - file.length()
+		}
+		
+		println('Minified ' + jsonMinified + ' json files. Saved ' + jsonBytesSaved + ' bytes. Took ' + (System.currentTimeMillis() - jsonMinifyStart) + 'ms.')
+	}
+}
+
+//build.dependsOn signJar
